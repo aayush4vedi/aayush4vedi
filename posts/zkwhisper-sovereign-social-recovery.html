@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ZKWhisper — Sovereign Social Recovery · Aayush Chaturvedi</title>
+  <link rel="stylesheet" href="../styles.css">
+  <script src="../theme.js"></script>
+</head>
+<body>
+  <div class="container">
+
+    <header class="site-header">
+      <div class="site-name"><a href="../index.html">Aayush Chaturvedi</a></div>
+      <nav class="site-nav">
+        <a href="../index.html">Home</a>
+        <a href="../blogs.html" class="active">Blogs</a>
+        <a href="../books.html">Books</a>
+        <a href="../stories.html">Stories</a>
+        <button class="theme-toggle" aria-label="Toggle theme"></button>
+      </nav>
+    </header>
+
+    <article class="post">
+      <h1>ZKWhisper — Losing Your Keys Without Losing Your Sovereignty</h1>
+      <p class="post-date">13 Aug 2023 · 4 min read · <a href="https://github.com/aayush4vedi/ZKWhisper">code on GitHub →</a></p>
+
+      <figure style="margin-top:0">
+        <a href="https://github.com/aayush4vedi/ZKWhisper"><img src="../imgs/projects/zkwhisper.png" alt="ZKWhisper" style="max-width:14rem;border-radius:12px"></a>
+        <figcaption><a href="https://github.com/aayush4vedi/ZKWhisper">github.com/aayush4vedi/ZKWhisper</a></figcaption>
+      </figure>
+
+      <p class="tldr">Wallet recovery today forces a choice: trust only yourself (and pray you never lose the seed phrase), or trust a custodian (and stop being your own bank). <a href="https://github.com/aayush4vedi/ZKWhisper">ZKWhisper</a> is my attempt at a third option — friends can help you recover your wallet, without you, them, or the chain ever seeing anything secret.</p>
+
+      <h2>The philosophy</h2>
+      <p>Crypto&rsquo;s founding promise is self-custody: your keys, your coins. The dirty secret is that self-custody outsources an extremely hard systems problem — durable, secure storage of a random 256-bit string — to the least reliable component in the stack: a human. People laminate seed phrases, split them across bank lockers, tattoo them (really), and still an estimated fifth of all Bitcoin sits stranded in wallets nobody can open anymore.</p>
+      <p>The usual fix is to hand the problem back to an institution. That works, but it quietly deletes the whole point &mdash; you&rsquo;re back to asking permission to access your own money.</p>
+      <p>I think the mature position is that <strong>we should stop pushing responsibility onto users and start building systems that feel invisible while keeping the values intact</strong>. Humans already have a great recovery mechanism: other humans. You trust a handful of people in your life. The trick is to use them <em>without</em> trusting them with anything — no guardian should learn your secret, learn who the other guardians are, or be able to collude their way into your wallet.</p>
+
+      <h2>The math that makes it work</h2>
+      <h3>Shamir&rsquo;s (k, n) secret sharing</h3>
+      <p>Encode your secret <em>S</em> as the constant term of a random polynomial of degree <em>k</em>&minus;1, so that <em>f</em>(0) = <em>S</em>. Each guardian <em>i</em> gets one point on the curve: the share (<em>x<sub>i</sub></em>, <em>f</em>(<em>x<sub>i</sub></em>)). A degree-(<em>k</em>&minus;1) polynomial is fully determined by any <em>k</em> points — and completely undetermined by <em>k</em>&minus;1. This isn&rsquo;t &ldquo;hard to crack&rdquo;; it&rsquo;s information-theoretically perfect. With fewer than <em>k</em> shares, every possible secret remains equally likely.</p>
+
+      <figure>
+        <svg viewBox="0 0 560 230" style="max-width:100%;height:auto" fill="none" stroke="currentColor" font-family="ui-sans-serif,sans-serif" font-size="13">
+          <line x1="30" y1="190" x2="540" y2="190" stroke-width="1" opacity="0.5"/>
+          <line x1="40" y1="20" x2="40" y2="190" stroke-width="1" opacity="0.5"/>
+          <path d="M40,170 Q280,-60 520,170" stroke-width="1.5"/>
+          <circle cx="40" cy="170" r="5" fill="currentColor"/>
+          <circle cx="88" cy="129" r="4" fill="currentColor" opacity="0.55"/>
+          <circle cx="184" cy="73" r="4" fill="currentColor" opacity="0.55"/>
+          <circle cx="280" cy="55" r="4" fill="currentColor" opacity="0.55"/>
+          <circle cx="376" cy="73" r="4" fill="currentColor" opacity="0.55"/>
+          <circle cx="472" cy="129" r="4" fill="currentColor" opacity="0.55"/>
+          <text x="52" y="163" fill="currentColor" stroke="none" font-weight="600">f(0) = S</text>
+          <text x="300" y="40" fill="currentColor" stroke="none" opacity="0.7">shares (x&#8342;, f(x&#8342;)) &#8594; guardians</text>
+          <text x="500" y="210" fill="currentColor" stroke="none" opacity="0.5">x</text>
+        </svg>
+        <figcaption>The secret lives at x = 0. Guardians each hold one point; any k of them pin the curve down, k&minus;1 pin down nothing.</figcaption>
+      </figure>
+
+      <p>Recovery is Lagrange interpolation evaluated at zero: <em>S</em> = <em>f</em>(0) = &Sigma; <em>y<sub>i</sub></em> &middot; &prod;<sub>j&ne;i</sub> <em>x<sub>j</sub></em> / (<em>x<sub>j</sub></em> &minus; <em>x<sub>i</sub></em>). Collect any <em>k</em> of your <em>n</em> shares, run the sum, and the secret reappears.</p>
+
+      <h3>Merkle trees, twice</h3>
+      <p>Two trees keep everyone honest. One is an identity tree: signing up inserts a <em>commitment</em> — a hash of two private values, a secret and a nullifier — as a leaf, and later you prove &ldquo;I know the preimage of some leaf in this tree&rdquo; without pointing at which one. The second is built per recovery setup, over the guardian shares: every share carries the root and its inclusion path, so a tampered or fabricated share exposes itself before you waste time interpolating &mdash; the paths simply won&rsquo;t hash up to the same root.</p>
+
+      <h3>Saying it without saying it</h3>
+      <p>All of the above happens inside a zk-SNARK (Circom circuits, Groth16). The circuit checks that your secret and nullifier hash to the committed value, walks the Merkle path to the public root, and confirms the reconstruction — then hands the chain a tiny proof that says only: <em>&ldquo;this is all true.&rdquo;</em> The contract verifies the proof. No secret, no shares, no guardian identities ever touch the chain.</p>
+
+      <figure>
+        <svg viewBox="0 0 560 120" style="max-width:100%;height:auto" fill="none" stroke="currentColor" font-family="ui-sans-serif,sans-serif" font-size="12.5">
+          <rect x="10" y="40" width="70" height="40" rx="6" stroke-width="1.2"/>
+          <text x="45" y="64" fill="currentColor" stroke="none" text-anchor="middle" font-weight="600">S</text>
+          <path d="M84,60 L128,20 M84,60 L128,45 M84,60 L128,70 M84,60 L128,95" stroke-width="1" opacity="0.6"/>
+          <g stroke-width="1.2"><rect x="130" y="10" width="46" height="20" rx="4"/><rect x="130" y="35" width="46" height="20" rx="4"/><rect x="130" y="60" width="46" height="20" rx="4"/><rect x="130" y="85" width="46" height="20" rx="4"/></g>
+          <text x="153" y="24" fill="currentColor" stroke="none" text-anchor="middle" opacity="0.7">g&#8321;</text>
+          <text x="153" y="49" fill="currentColor" stroke="none" text-anchor="middle" opacity="0.7">g&#8322;</text>
+          <text x="153" y="74" fill="currentColor" stroke="none" text-anchor="middle" opacity="0.7">g&#8323;</text>
+          <text x="153" y="99" fill="currentColor" stroke="none" text-anchor="middle" opacity="0.7">g&#8324;&#8230;</text>
+          <path d="M180,45 L232,58 M180,70 L232,62 M180,95 L232,66" stroke-width="1" opacity="0.6"/>
+          <rect x="235" y="40" width="130" height="40" rx="6" stroke-width="1.2"/>
+          <text x="300" y="58" fill="currentColor" stroke="none" text-anchor="middle">any k shares &#8594;</text>
+          <text x="300" y="73" fill="currentColor" stroke="none" text-anchor="middle">interpolate + prove</text>
+          <line x1="369" y1="60" x2="415" y2="60" stroke-width="1" opacity="0.6"/>
+          <rect x="418" y="40" width="130" height="40" rx="6" stroke-width="1.2"/>
+          <text x="483" y="58" fill="currentColor" stroke="none" text-anchor="middle">contract verifies</text>
+          <text x="483" y="73" fill="currentColor" stroke="none" text-anchor="middle">&#960; &#10003; (learns nothing)</text>
+        </svg>
+        <figcaption>Split offline, hand out shares, forget the secret. Recovery: gather k shares, reconstruct and prove in-browser, chain checks the proof.</figcaption>
+      </figure>
+
+      <h2>The part I care about most</h2>
+      <p>Guardians never know each other. There is no guardian list on-chain, no group chat, no ceremony. Collusion requires first discovering <em>who else</em> is a guardian — and the system gives no one, including the guardians, a way to find out. The social graph stays in your head, which is exactly where it&rsquo;s safest.</p>
+      <p>Implementation-wise it&rsquo;s the usual suspects — Circom circuits proving in the browser, a Solidity verifier, a Next.js client — built in a caffeinated blur for ETH Superhack. The code is <a href="https://github.com/aayush4vedi/ZKWhisper">on GitHub</a>; the ideas above are the part worth keeping.</p>
+
+      <a class="back-link" href="../blogs.html">← All blogs</a>
+    </article>
+
+    <footer class="site-footer">
+      <div class="social">
+        <a href="mailto:aayush.4vedi@gmail.com">email</a>
+        <a href="https://github.com/aayush4vedi">github</a>
+        <a href="https://twitter.com/aayush4vedi">x</a>
+        <a href="https://www.linkedin.com/in/aayush-chaturvedi-bb7143116/">linkedin</a>
+        <a href="https://www.goodreads.com/user/show/102245368-aayush-chaturvedi">goodreads</a>
+      </div>
+      <div>© Aayush Chaturvedi</div>
+    </footer>
+
+  </div>
+</body>
+</html>
